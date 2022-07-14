@@ -24,6 +24,11 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
+import site
+
+site.addsitedir("../../")  # models
+site.addsitedir("../efficientnet")
+
 import base64
 import csv
 import io
