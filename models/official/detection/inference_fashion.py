@@ -32,6 +32,7 @@ site.addsitedir("../efficientnet")
 import base64
 import csv
 import io
+import tarfile
 
 from absl import flags
 from absl import logging
@@ -161,14 +162,24 @@ def main(unused_argv):
       saver.restore(sess, FLAGS.checkpoint_path)
 
       res = []
-      image_files = tf.gfile.Glob(FLAGS.image_file_pattern)
+      image_file_pattern = FLAGS.image_file_pattern
+      if image_file_pattern.endswith(".tar"):
+        with tarfile.open(image_file_pattern, "r") as tar:
+          image_files = tar.getnames()
+      else:
+        image_files = tf.gfile.Glob(FLAGS.image_file_pattern)
       for i, image_file in enumerate(image_files):
         print(' - Processing image %d...' % i)
 
-        with tf.gfile.GFile(image_file, 'rb') as f:
-          image_bytes = f.read()
+        if image_file_pattern.endswith(".tar"):
+          with tarfile.open(image_file_pattern, "r") as tar:
+            image_bytes = io.BytesIO(tar.extractfile(image_file).read())
+          image = Image.open(image_bytes)
+        else:
+          with tf.gfile.GFile(image_file, 'rb') as f:
+            image_bytes = f.read()
+          image = Image.open(image_file)
 
-        image = Image.open(image_file)
         image = image.convert('RGB')  # needed for images with 4 channels.
         width, height = image.size
         np_image = (np.array(image.getdata())
