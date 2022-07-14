@@ -33,6 +33,7 @@ import base64
 import csv
 import io
 import tarfile
+import tempfile
 
 from absl import flags
 from absl import logging
@@ -175,6 +176,10 @@ def main(unused_argv):
           with tarfile.open(image_file_pattern, "r") as tar:
             image_bytes = io.BytesIO(tar.extractfile(image_file).read())
           image = Image.open(image_bytes)
+          with tempfile.NamedTemporaryFile(suffix=".png") as temp_file:
+            image.save(temp_file.name)
+            with tf.gfile.GFile(temp_file.name, 'rb') as f:
+              image_bytes = f.read()
         else:
           with tf.gfile.GFile(image_file, 'rb') as f:
             image_bytes = f.read()
