@@ -42,6 +42,7 @@ import numpy as np
 from PIL import Image
 from pycocotools import mask as mask_api
 import tensorflow.compat.v1 as tf
+from tqdm import tqdm
 
 from dataloader import mode_keys
 from projects.fashionpedia.configs import factory as config_factory
@@ -52,6 +53,8 @@ from utils import mask_utils
 from utils.object_detection import visualization_utils
 from hyperparameters import params_dict
 
+
+WRITE_HTML = False
 
 FLAGS = flags.FLAGS
 
@@ -169,9 +172,7 @@ def main(unused_argv):
           image_files = tar.getnames()
       else:
         image_files = tf.gfile.Glob(FLAGS.image_file_pattern)
-      for i, image_file in enumerate(image_files):
-        print(' - Processing image %d...' % i)
-
+      for i, image_file in tqdm(enumerate(image_files), desc='Detecting in images'):
         if image_file_pattern.endswith(".tar"):
           with tarfile.open(image_file_pattern, "r") as tar:
             image_bytes = io.BytesIO(tar.extractfile(image_file).read())
@@ -218,37 +219,41 @@ def main(unused_argv):
             'masks': encoded_masks,
         })
 
-        image_with_detections = (
-            visualization_utils.visualize_boxes_and_labels_on_image_array(
-                np_image,
-                np_boxes,
-                np_classes,
-                np_scores,
-                label_map_dict,
-                instance_masks=np_masks,
-                use_normalized_coordinates=False,
-                max_boxes_to_draw=FLAGS.max_boxes_to_draw,
-                min_score_thresh=FLAGS.min_score_threshold))
-        image_with_detections_list.append(image_with_detections)
+        if WRITE_HTML:
+          image_with_detections = (
+              visualization_utils.visualize_boxes_and_labels_on_image_array(
+                  np_image,
+                  np_boxes,
+                  np_classes,
+                  np_scores,
+                  label_map_dict,
+                  instance_masks=np_masks,
+                  use_normalized_coordinates=False,
+                  max_boxes_to_draw=FLAGS.max_boxes_to_draw,
+                  min_score_thresh=FLAGS.min_score_threshold))
+          image_with_detections_list.append(image_with_detections)
 
-  print(' - Saving the outputs...')
-  formatted_image_with_detections_list = [
-      Image.fromarray(image.astype(np.uint8))
-      for image in image_with_detections_list]
-  html_str = '<html>'
-  image_strs = []
-  for formatted_image in formatted_image_with_detections_list:
-    with io.BytesIO() as stream:
-      formatted_image.save(stream, format='JPEG')
-      data_uri = base64.b64encode(stream.getvalue()).decode('utf-8')
-    image_strs.append(
-        '<img src="data:image/jpeg;base64,{}", height=800>'
-        .format(data_uri))
-  images_str = ' '.join(image_strs)
-  html_str += images_str
-  html_str += '</html>'
-  with tf.gfile.GFile(FLAGS.output_html, 'w') as f:
-    f.write(html_str)
+  if WRITE_HTML:
+    print(f'- Saving as html to {FLAGS.output_html}...')
+    formatted_image_with_detections_list = [
+        Image.fromarray(image.astype(np.uint8))
+        for image in image_with_detections_list]
+    html_str = '<html>'
+    image_strs = []
+    for formatted_image in formatted_image_with_detections_list:
+      with io.BytesIO() as stream:
+        formatted_image.save(stream, format='JPEG')
+        data_uri = base64.b64encode(stream.getvalue()).decode('utf-8')
+      image_strs.append(
+          '<img src="data:image/jpeg;base64,{}", height=800>'
+          .format(data_uri))
+    images_str = ' '.join(image_strs)
+    html_str += images_str
+    html_str += '</html>'
+    with tf.gfile.GFile(FLAGS.output_html, 'w') as f:
+      f.write(html_str)
+
+  print(f' - Saving the outputs to {FLAGS.output_file}...')
   np.save(FLAGS.output_file, res)
 
 
