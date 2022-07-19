@@ -172,7 +172,7 @@ def main(unused_argv):
           image_files = tar.getnames()
       else:
         image_files = tf.gfile.Glob(FLAGS.image_file_pattern)
-      for i, image_file in tqdm(enumerate(image_files), desc='Detecting in images'):
+      for i, image_file in tqdm(enumerate(image_files), desc='Detecting in images', total=len(image_files)):
         if image_file_pattern.endswith(".tar"):
           with tarfile.open(image_file_pattern, "r") as tar:
             image_bytes = io.BytesIO(tar.extractfile(image_file).read())
