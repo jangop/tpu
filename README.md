@@ -11,7 +11,7 @@ conda activate tpu
 ```
 Then install a couple of (very old, of course) dependencies:
 ```bash
-pip install tensorflow-gpu==1.15.0 protobuf==3.20.0 numpy==1.19.0 cython matplotlib opencv-python-headless pyyaml pillow pycocotools
+pip install tensorflow-gpu==1.15.0 protobuf==3.20.0 numpy==1.19.0 cython matplotlib opencv-python-headless pyyaml pillow pycocotools tqdm
 ```
 Next, navigate to the `detection` directory:
 ```bash
