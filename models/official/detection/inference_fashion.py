@@ -69,7 +69,7 @@ flags.DEFINE_string(
     'params_override', '', 'The YAML file/string that specifies the parameters '
     'override in addition to the `config_file`.')
 flags.DEFINE_string(
-    'label_map_file', '',
+    'label_map_file', None,
     'The label map file. See --label_map_format for the definition.')
 flags.DEFINE_string(
     'label_map_format', 'csv',
@@ -94,7 +94,7 @@ flags.DEFINE_float(
 def main(unused_argv):
   del unused_argv
   # Load the label map.
-  print(' - Loading the label map...')
+  print(f' - Loading the label map from `{FLAGS.label_map_file}`...')
   label_map_dict = {}
   if FLAGS.label_map_format == 'csv':
     with tf.gfile.Open(FLAGS.label_map_file, 'r') as csv_file:
@@ -255,6 +255,9 @@ def main(unused_argv):
 
   print(f' - Saving the outputs to {FLAGS.output_file}...')
   np.save(FLAGS.output_file, res)
+
+def argv_main(argv):
+    tf.app.run(main, argv)
 
 
 if __name__ == '__main__':
