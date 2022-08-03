@@ -6,8 +6,8 @@ from inference_fashion import argv_main
 def serve():
     address = ("localhost", 6969)
     with Listener(address, authkey=b"pepper") as listener:
-        with listener.accept() as connection:
-            while True:
+        while True:
+            with listener.accept() as connection:
                 data = connection.recv()
 
                 print(f"Received:/n{data}")
