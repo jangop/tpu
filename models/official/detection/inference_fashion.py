@@ -16,7 +16,7 @@
 r"""A stand-alone binary to run model inference and visualize results.
 
 It currently only supports model of type `retinanet` and `mask_rcnn`. It only
-supports running on CPU/GPU with batch size 1.
+supports running on CPU/GPU.
 """
 # pylint: enable=line-too-long
 
@@ -54,7 +54,7 @@ from utils.object_detection import visualization_utils
 from hyperparameters import params_dict
 
 
-WRITE_HTML = False
+WRITE_HTML = True
 
 FLAGS = flags.FLAGS
 
@@ -89,6 +89,9 @@ flags.DEFINE_integer(
 flags.DEFINE_float(
     'min_score_threshold', 0.05,
     'The minimum score thresholds in order to draw boxes.')
+flags.DEFINE_integer(
+  'batch_size', 4,
+  'Number of images to process in one step.')
 
 
 def main(unused_argv):
@@ -130,31 +133,42 @@ def main(unused_argv):
   model = model_factory.model_generator(params)
 
   with tf.Graph().as_default():
-    image_input = tf.placeholder(shape=(), dtype=tf.string)
-    image = tf.io.decode_image(image_input, channels=3)
-    image.set_shape([None, None, 3])
 
-    image = input_utils.normalize_image(image)
-    image_size = [FLAGS.image_size, FLAGS.image_size]
-    image, image_info = input_utils.resize_and_crop_image(
+    image_input = tf.placeholder(shape=(None,), dtype=tf.string)
+    images = []
+    image_infos = []
+
+    # preprocess model input 
+    for idx in range(FLAGS.batch_size):
+      image = tf.io.decode_image(image_input[idx], channels=3)
+      image.set_shape([None, None, 3])
+
+      image = input_utils.normalize_image(image)
+      image_size = [FLAGS.image_size, FLAGS.image_size]
+      image, image_info = input_utils.resize_and_crop_image(
         image,
         image_size,
         image_size,
         aug_scale_min=1.0,
         aug_scale_max=1.0)
-    image.set_shape([image_size[0], image_size[1], 3])
+      image.set_shape([image_size[0], image_size[1], 3])
 
-    # batching.
-    images = tf.reshape(image, [1, image_size[0], image_size[1], 3])
-    images_info = tf.expand_dims(image_info, axis=0)
+      images.append(image)
+      image_infos.append(image_info)
+
+    images = tf.stack(images)
+    image_infos = tf.stack(image_infos)
 
     # model inference
     outputs = model.build_outputs(
-        images, {'image_info': images_info}, mode=mode_keys.PREDICT)
-
+        images, 
+        {'image_info': image_infos}, 
+        mode=mode_keys.PREDICT
+        )
+    
     outputs['detection_boxes'] = (
-        outputs['detection_boxes'] / tf.tile(images_info[:, 2:3, :], [1, 1, 2]))
-
+        outputs['detection_boxes'] / tf.tile(image_infos[:, 2:3, :], [1, 1, 2])
+    )
     predictions = outputs
 
     # Create a saver in order to load the pre-trained checkpoint.
@@ -166,72 +180,105 @@ def main(unused_argv):
       saver.restore(sess, FLAGS.checkpoint_path)
 
       res = []
-      image_file_pattern = FLAGS.image_file_pattern
-      if image_file_pattern.endswith(".tar"):
-        with tarfile.open(image_file_pattern, "r") as tar:
+      if FLAGS.image_file_pattern.endswith(".tar"):
+        with tarfile.open(FLAGS.image_file_pattern, "r") as tar:
           image_files = tar.getnames()
       else:
         image_files = tf.gfile.Glob(FLAGS.image_file_pattern)
-      for i, image_file in tqdm(enumerate(image_files), desc='Detecting in images', total=len(image_files)):
-        if image_file_pattern.endswith(".tar"):
-          with tarfile.open(image_file_pattern, "r") as tar:
-            image_bytes = io.BytesIO(tar.extractfile(image_file).read())
-          image = Image.open(image_bytes)
-          with tempfile.NamedTemporaryFile(suffix=".png") as temp_file:
-            image.save(temp_file.name)
-            with tf.gfile.GFile(temp_file.name, 'rb') as f:
-              image_bytes = f.read()
-        else:
-          with tf.gfile.GFile(image_file, 'rb') as f:
-            image_bytes = f.read()
-          image = Image.open(image_file)
 
-        image = image.convert('RGB')  # needed for images with 4 channels.
-        width, height = image.size
-        np_image = (np.array(image.getdata())
-                    .reshape(height, width, 3).astype(np.uint8))
+      for batch_index in tqdm(
+        range(0, len(image_files), FLAGS.batch_size),
+        desc="Detecting batchwise in images",
+        ):
+
+        batch_image_files = image_files[
+          batch_index : (batch_index + FLAGS.batch_size)]
+
+        batch_images = []
+        batch_images_bytes = []
+        np_images = []
+        wh_images = []   
+
+        for image_file in batch_image_files:
+          
+          if FLAGS.image_file_pattern.endswith(".tar"):
+            with tarfile.open(FLAGS.image_file_pattern, "r") as tar:
+              image_bytes = io.BytesIO(
+                tar.extractfile(image_file).read()
+                )
+            image = Image.open(image_bytes)
+            with tempfile.NamedTemporaryFile(suffix=".png") as temp_file:
+              image.save(temp_file.name)
+              with tf.gfile.GFile(temp_file.name, 'rb') as f:
+                image_bytes = f.read()
+          else:
+            with tf.gfile.GFile(image_file, 'rb') as f:
+              image_bytes = f.read()
+            image = Image.open(image_file)
+
+          if image.mode != "RGB":
+            image = image.convert("RGB")
+
+          batch_images.append(image)
+          width, height = image.size
+          np_images.append(
+            (np.array(image.getdata()
+                      ).reshape(height, width, 3).astype(np.uint8)))
+          wh_images.append((width, height))
+
+          batch_images_bytes.append(image_bytes)
+
+        # Pad the batch if it has fewer elements than BATCH_SIZE
+        # a little bit hacky, but couldnt find a better solution
+        while len(batch_images_bytes) < FLAGS.batch_size:
+          batch_images_bytes.append(image_bytes)
 
         predictions_np = sess.run(
-            predictions, feed_dict={image_input: image_bytes})
+          predictions, 
+          feed_dict={image_input: batch_images_bytes}
+          )
 
-        num_detections = int(predictions_np['num_detections'][0])
-        np_boxes = predictions_np['detection_boxes'][0, :num_detections]
-        np_scores = predictions_np['detection_scores'][0, :num_detections]
-        np_classes = predictions_np['detection_classes'][0, :num_detections]
-        np_classes = np_classes.astype(np.int32)
-        np_attributes = predictions_np['detection_attributes'][
-            0, :num_detections, :]
-        np_masks = None
-        if 'detection_masks' in predictions_np:
-          instance_masks = predictions_np['detection_masks'][0, :num_detections]
-          np_masks = mask_utils.paste_instance_masks(
+        for idx in range(len(batch_images)):
+          width, height  = wh_images[idx]
+          num_detections = int(predictions_np['num_detections'][idx])
+          np_boxes = predictions_np['detection_boxes'][idx, :num_detections]
+          np_scores = predictions_np['detection_scores'][idx, :num_detections]
+          np_classes = predictions_np['detection_classes'][idx, :num_detections]
+          np_classes = np_classes.astype(np.int32)
+          np_attributes = predictions_np['detection_attributes'][
+            idx, :num_detections, :]
+          np_masks = None
+          if 'detection_masks' in predictions_np:
+            instance_masks = predictions_np['detection_masks'][
+              idx, :num_detections]
+            np_masks = mask_utils.paste_instance_masks(
               instance_masks, box_utils.yxyx_to_xywh(np_boxes), height, width)
-          encoded_masks = [
+            encoded_masks = [
               mask_api.encode(np.asfortranarray(np_mask))
               for np_mask in list(np_masks)]
 
-        res.append({
-            'image_file': image_file,
+          res.append({
+            'image_file': image_files[idx],
             'boxes': np_boxes,
             'classes': np_classes,
             'scores': np_scores,
             'attributes': np_attributes,
             'masks': encoded_masks,
-        })
+          })
 
-        if WRITE_HTML:
-          image_with_detections = (
+          if WRITE_HTML:
+            image_with_detections = (
               visualization_utils.visualize_boxes_and_labels_on_image_array(
-                  np_image,
-                  np_boxes,
-                  np_classes,
-                  np_scores,
-                  label_map_dict,
-                  instance_masks=np_masks,
-                  use_normalized_coordinates=False,
-                  max_boxes_to_draw=FLAGS.max_boxes_to_draw,
-                  min_score_thresh=FLAGS.min_score_threshold))
-          image_with_detections_list.append(image_with_detections)
+                np_images[idx],
+                np_boxes,
+                np_classes,
+                np_scores,
+                label_map_dict,
+                instance_masks=np_masks,
+                use_normalized_coordinates=False,
+                max_boxes_to_draw=FLAGS.max_boxes_to_draw,
+                min_score_thresh=FLAGS.min_score_threshold))
+            image_with_detections_list.append(image_with_detections)
 
   if WRITE_HTML:
     print(f'- Saving as html to {FLAGS.output_html}...')
