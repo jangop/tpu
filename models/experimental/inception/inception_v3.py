@@ -30,7 +30,6 @@ from tensorflow.compat.v1 import estimator as tf_estimator
 import inception_preprocessing
 import vgg_preprocessing
 from tensorflow.contrib import cluster_resolver as contrib_cluster_resolver
-from tensorflow.contrib import data as contrib_data
 from tensorflow.contrib import framework as contrib_framework
 
 from tensorflow.contrib import summary
@@ -402,7 +401,7 @@ class InputPipeline(object):
         return dataset
 
       dataset = dataset.apply(
-          contrib_data.parallel_interleave(
+          tf.data.experimental.parallel_interleave(
               prefetch_dataset,
               cycle_length=FLAGS.num_files_infeed,
               sloppy=True))

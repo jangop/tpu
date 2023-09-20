@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 # ==============================================================================
-"""BERT IMDB Sentiment Alanysis data loader."""
+"""Generic data loader for jsonl datasets."""
 import json
 from typing import Any, Mapping
 
@@ -22,14 +22,17 @@ import tensorflow as tf
 from load_test.data import data_loader
 
 
-class SentimentBertLoader(data_loader.DataLoader):
-  """A dataloader handling IMDB sentiment analysis dataset."""
+class GenericJsonlLoader(data_loader.DataLoader):
+  """A dataloader handling generic jsonl datasets."""
 
   def __init__(self, data_file: str = None, **kwargs: Mapping[str, Any]):
     self._data_file = data_file
     self._samples = []
     self._types = None
     self._process_dataset()
+
+    if self.get_samples_count() == 0:
+      logging.error('No samples in datafile %s', self._data_file)
 
   def _process_dataset(self):
     logging.info('Downloading the dataset file...')
