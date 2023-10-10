@@ -6,12 +6,12 @@ Because this code base is all weird, we need to be a little careful about how we
 ## Environment
 Let's use Anaconda to prepare an old Python:
 ```bash
-conda create -n tpu python=3.10
+conda create -n tpu python=3.7
 conda activate tpu
 ```
 Then install a couple of (very old, of course) dependencies:
 ```bash
-pip install -r requirements.txt
+pip install tensorflow-gpu==1.15.0 protobuf==3.20.0 numpy==1.19.0 cython matplotlib opencv-python-headless pyyaml pillow pycocotools tqdm
 ```
 Next, navigate to the `detection` directory:
 ```bash
@@ -26,7 +26,7 @@ tar -xf fashionpedia-spinenet-143.tar.gz
 ```
 Finally, perform inference:
 ```bash
-python inference_fashion.py --model="attribute_mask_rcnn" --image_size="640" --checkpoint_path="fashionpedia-spinenet-143/model.ckpt" --label_map_file="projects/fashionpedia/dataset/fashionpedia_label_map.csv" --image_file_pattern="path/to/sized-images.tar" --output_html="out.html" --max_boxes_to_draw=8 --min_score_threshold=0.05 --config_file="projects/fashionpedia/configs/yaml/spinenet143_amrcnn.yaml" --output_file="output.npy" --batch_size=4
+python inference_fashion.py --model="attribute_mask_rcnn" --image_size="640" --checkpoint_path="fashionpedia-spinenet-143/model.ckpt" --label_map_file="projects/fashionpedia/dataset/fashionpedia_label_map.csv" --image_file_pattern="path/to/sized-images.tar" --output_html="out.html" --max_boxes_to_draw=8 --min_score_threshold=0.05 --config_file="projects/fashionpedia/configs/yaml/spinenet143_amrcnn.yaml" --output_file="output.npy"
 ```
 
 
